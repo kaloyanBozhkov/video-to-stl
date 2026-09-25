@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { runPipeline, defaultOptions, type PipelineOptions, type PipelineResult, type Stage } from "@/lib/pipeline";
 import { StlViewer } from "@/components/StlViewer";
 import { MaskStrip } from "@/components/MaskStrip";
@@ -31,6 +31,12 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>("");
   const [result, setResult] = useState<PipelineResult | null>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  // On phones the results are below the fold, so bring them into view.
+  useEffect(() => {
+    if (result) resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [result]);
 
   async function run() {
     if (!file) return;
@@ -85,15 +91,22 @@ export default function Home() {
       </p>
 
       <section className="card">
-        <label className="upload">
-          <input
-            type="file"
-            accept="video/*"
-            capture="environment"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-          <span>{file ? file.name : "Record or choose a video"}</span>
-        </label>
+        <div className="uploads">
+          <label className="upload">
+            <input
+              type="file"
+              accept="video/*"
+              capture="environment"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            <span>🎥 Record video</span>
+          </label>
+          <label className="upload">
+            <input type="file" accept="video/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <span>📁 Choose file</span>
+          </label>
+        </div>
+        <p className="filename">{file ? `Selected: ${file.name}` : "No video selected yet"}</p>
 
         <div className="grid">
           {fields.map((f) => (
@@ -129,7 +142,7 @@ export default function Home() {
       </section>
 
       {result && (
-        <>
+        <div ref={resultsRef}>
           <section className="card">
             <h2>Silhouettes</h2>
             <p className="hint">The object should be white and the background black. If it isn&apos;t, adjust the threshold.</p>
@@ -139,7 +152,7 @@ export default function Home() {
             <h2>Model</h2>
             <StlViewer mesh={result.mesh} />
           </section>
-        </>
+        </div>
       )}
 
       <section className="card tips">

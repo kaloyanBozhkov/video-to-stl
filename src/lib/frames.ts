@@ -23,6 +23,13 @@ export async function extractFrames(
 
   try {
     await once(video, "loadedmetadata");
+    // iOS Safari won't decode frames for seeking until playback has been started once.
+    try {
+      await video.play();
+      video.pause();
+    } catch {
+      /* autoplay refused — seeking still works on most browsers */
+    }
     // Some browsers report Infinity for freshly recorded webm; force a duration.
     if (!Number.isFinite(video.duration)) {
       video.currentTime = 1e9;
