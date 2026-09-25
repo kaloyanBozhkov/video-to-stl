@@ -39,3 +39,30 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .viewer { height: 340px; }
   .strip canvas { height: 90px; }
 }
+
+a { color: #f5a524; }
+.steps ol { margin: 0; padding-left: 20px; line-height: 1.7; color: #c2c6cc; }
+.steps b { color: #e6e6e6; }
+button.link { background: none; color: #9aa0a6; padding: 12px 0 0; min-height: 0; font-weight: 500; text-decoration: underline; }
+.grid small { color: #6f757d; font-size: 0.78rem; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.stats div { background: #0f1115; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.stats b { color: #f5a524; font-size: 1rem; }
+.stats span { color: #9aa0a6; font-size: 0.75rem; }
+button.download { width: 100%; margin-top: 12px; }
+
+/* Printable mat */
+.mat-page { background: #fff; min-height: 100vh; color: #111; }
+.mat-toolbar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 12px 16px; background: #15171c; color: #e6e6e6; }
+.mat-sheet { display: flex; justify-content: center; padding: 16px; }
+.mat-sheet svg { width: min(100%, 210mm); height: auto; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25); }
+@page { size: A4 portrait; margin: 0; }
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .mat-sheet { padding: 0; }
+  .mat-sheet svg { width: 210mm; height: 297mm; box-shadow: none; }
+}
+@media (max-width: 600px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}

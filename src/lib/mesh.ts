@@ -1,4 +1,4 @@
-import type { VoxelGrid } from "./carve";
+import type { VoxelGrid } from "./carveMat";
 
 export interface Mesh {
   positions: Float32Array; // xyz per vertex
@@ -93,8 +93,8 @@ function taubinSmooth(positions: Float32Array, indices: Uint32Array, iterations:
   }
 }
 
-/** Uniformly scale so the longest side equals `targetMm`, and rest the model on z=0 (print bed). */
-export function scaleToMillimetres(mesh: Mesh, targetMm: number): Mesh {
+/** Voxel units → mm; centre on X/Z, rest on Y=0 (the print bed, Y-up). */
+export function toMillimetres(mesh: Mesh, voxelMm: number): Mesh {
   const p = mesh.positions;
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
@@ -103,13 +103,55 @@ export function scaleToMillimetres(mesh: Mesh, targetMm: number): Mesh {
       min[a] = Math.min(min[a], p[i + a]);
       max[a] = Math.max(max[a], p[i + a]);
     }
-  const longest = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
-  const s = targetMm / longest;
   const out = new Float32Array(p.length);
   for (let i = 0; i < p.length; i += 3) {
-    out[i] = (p[i] - (min[0] + max[0]) / 2) * s;
-    out[i + 1] = (p[i + 1] - min[1]) * s;
-    out[i + 2] = (p[i + 2] - (min[2] + max[2]) / 2) * s;
+    out[i] = (p[i] - (min[0] + max[0]) / 2) * voxelMm;
+    out[i + 1] = (p[i + 1] - min[1]) * voxelMm;
+    out[i + 2] = (p[i + 2] - (min[2] + max[2]) / 2) * voxelMm;
   }
   return { positions: out, indices: mesh.indices };
+}
+
+/** Bounding-box size of a mesh (mm). */
+export function meshSize(mesh: Mesh): [number, number, number] {
+  const p = mesh.positions;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < p.length; i += 3)
+    for (let a = 0; a < 3; a++) {
+      min[a] = Math.min(min[a], p[i + a]);
+      max[a] = Math.max(max[a], p[i + a]);
+    }
+  return [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+}
+
+/** Keep only the largest 6-connected solid blob (drops floating specks). */
+export function largestBlob(grid: VoxelGrid): VoxelGrid {
+  const { nx, ny, nz, data } = grid;
+  const n = data.length;
+  const label = new Int32Array(n);
+  const stack = new Int32Array(n);
+  let best = 0, bestSize = 0, next = 0;
+  for (let s = 0; s < n; s++) {
+    if (!data[s] || label[s]) continue;
+    next++;
+    let sp = 0, size = 0;
+    stack[sp++] = s;
+    label[s] = next;
+    while (sp) {
+      const i = stack[--sp];
+      size++;
+      const x = i % nx, y = Math.floor(i / nx) % ny, z = Math.floor(i / (nx * ny));
+      const nb = [
+        x > 0 ? i - 1 : -1, x < nx - 1 ? i + 1 : -1,
+        y > 0 ? i - nx : -1, y < ny - 1 ? i + nx : -1,
+        z > 0 ? i - nx * ny : -1, z < nz - 1 ? i + nx * ny : -1,
+      ];
+      for (const j of nb) if (j >= 0 && data[j] && !label[j]) { label[j] = next; stack[sp++] = j; }
+    }
+    if (size > bestSize) { bestSize = size; best = next; }
+  }
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = label[i] === best ? 1 : 0;
+  return { ...grid, data: out };
 }

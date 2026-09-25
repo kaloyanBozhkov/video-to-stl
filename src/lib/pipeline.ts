@@ -1,69 +1,55 @@
-import { extractFrames } from "./frames";
-import { segment, type Mask } from "./segment";
-import { carveVisualHull } from "./carve";
-import { voxelsToMesh, scaleToMillimetres, type Mesh } from "./mesh";
+import { forEachFrame } from "./frames";
+import { processFrame, reconstruct, defaultReconstructOptions, type ReconstructOptions, type Reconstruction, type View } from "./reconstruct";
 import { meshToBinaryStl } from "./stl";
 
-export interface PipelineOptions {
+export interface PipelineOptions extends ReconstructOptions {
   frames: number;
   maxFrameSize: number;
-  threshold: number;
-  resolution: number;
-  rotationDegrees: number;
-  tolerance: number;
-  smoothing: number;
-  targetMm: number;
 }
 
 export const defaultOptions: PipelineOptions = {
-  frames: 36,
-  maxFrameSize: 480,
-  threshold: 60,
-  resolution: 128,
-  rotationDegrees: 360,
-  tolerance: 0.05,
-  smoothing: 8,
-  targetMm: 140, // a typical ballpoint pen
+  ...defaultReconstructOptions,
+  frames: 48,
+  maxFrameSize: 1280,
 };
 
-export interface PipelineResult {
-  masks: Mask[];
-  mesh: Mesh;
+export interface PipelineResult extends Reconstruction {
   stl: ArrayBuffer;
-  stats: { triangles: number; voxels: number; ms: number };
+  framesTotal: number;
+  framesWithMat: number;
+  ms: number;
 }
 
-export type Stage = "frames" | "segment" | "carve" | "mesh" | "export";
+export type Stage = "frames" | "calibrate" | "export";
 export type ProgressFn = (stage: Stage, fraction: number) => void;
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
- * video → frames → silhouettes → visual hull → mesh → STL.
- * Each stage is a separate module so any one of them can be replaced by a
- * server-side implementation (see src/app/api/reconstruct/route.ts).
+ * video → (per frame) markers + homography + silhouette → self-calibrate camera
+ * → perspective visual hull → mesh (mm) → STL.
  */
 export async function runPipeline(file: File, o: PipelineOptions, progress: ProgressFn): Promise<PipelineResult> {
   const t0 = performance.now();
-  const frames = await extractFrames(file, o.frames, o.maxFrameSize, (d, n) => progress("frames", d / n));
+  const views: View[] = [];
+  const { width, height } = await forEachFrame(file, o.frames, o.maxFrameSize, async (w, h, rgba, i) => {
+    const v = processFrame(w, h, rgba, o);
+    if (v) views.push(v);
+    progress("frames", (i + 1) / o.frames);
+    await tick();
+  });
 
-  progress("segment", 0);
+  progress("calibrate", 0);
   await tick();
-  const masks = frames.map((f) => segment(f, o.threshold));
-
-  progress("carve", 0);
-  await tick();
-  const grid = carveVisualHull(masks, o);
-  const voxels = grid.data.reduce((a, b) => a + b, 0);
-  if (voxels === 0) throw new Error("Everything got carved away — check the rotation setting and that the object stays in frame");
-
-  progress("mesh", 0);
-  await tick();
-  const mesh = scaleToMillimetres(voxelsToMesh(grid, o.smoothing), o.targetMm);
+  const r = reconstruct(views, width, height, o);
 
   progress("export", 0);
   await tick();
-  const stl = meshToBinaryStl(mesh);
-
-  return { masks, mesh, stl, stats: { triangles: mesh.indices.length / 3, voxels, ms: performance.now() - t0 } };
+  return {
+    ...r,
+    stl: meshToBinaryStl(r.mesh),
+    framesTotal: o.frames,
+    framesWithMat: views.length,
+    ms: performance.now() - t0,
+  };
 }
